@@ -216,3 +216,63 @@ Resolve reference name from either string or object {name: ...}.
 {{- .name -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Validate chart values for settings that can break runtime behavior.
+*/}}
+{{- define "lightrag.validateValues" -}}
+{{- $persistence := default (dict) .Values.persistence -}}
+{{- $ragStorage := default (dict) $persistence.ragStorage -}}
+{{- $inputs := default (dict) $persistence.inputs -}}
+{{- $multiReplica := gt (int (default 1 .Values.replicaCount)) 1 -}}
+
+{{- if and $multiReplica $persistence.enabled $ragStorage.enabled -}}
+  {{- if $ragStorage.existingClaim -}}
+    {{- $ragPVC := lookup "v1" "PersistentVolumeClaim" .Release.Namespace $ragStorage.existingClaim -}}
+    {{- if $ragPVC -}}
+      {{- $ragPVCSpec := default (dict) (index $ragPVC "spec") -}}
+      {{- $ragPVCModes := default (list) (index $ragPVCSpec "accessModes") -}}
+      {{- if and (gt (len $ragPVCModes) 0) (not (has "ReadWriteMany" $ragPVCModes)) -}}
+        {{- fail (printf "Invalid values: persistence.ragStorage.existingClaim=%q must include ReadWriteMany when replicaCount > 1. Found accessModes=%v." $ragStorage.existingClaim $ragPVCModes) -}}
+      {{- end -}}
+    {{- end -}}
+  {{- else -}}
+    {{- $ragModes := default (list) $ragStorage.accessModes -}}
+    {{- if not (has "ReadWriteMany" $ragModes) -}}
+      {{- fail "Invalid values: replicaCount > 1 with persistence.ragStorage.enabled=true requires persistence.ragStorage.accessModes to include ReadWriteMany (RWX), or set replicaCount=1/disable this volume." -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
+{{- if and $multiReplica $persistence.enabled $inputs.enabled -}}
+  {{- if $inputs.existingClaim -}}
+    {{- $inputsPVC := lookup "v1" "PersistentVolumeClaim" .Release.Namespace $inputs.existingClaim -}}
+    {{- if $inputsPVC -}}
+      {{- $inputsPVCSpec := default (dict) (index $inputsPVC "spec") -}}
+      {{- $inputsPVCModes := default (list) (index $inputsPVCSpec "accessModes") -}}
+      {{- if and (gt (len $inputsPVCModes) 0) (not (has "ReadWriteMany" $inputsPVCModes)) -}}
+        {{- fail (printf "Invalid values: persistence.inputs.existingClaim=%q must include ReadWriteMany when replicaCount > 1. Found accessModes=%v." $inputs.existingClaim $inputsPVCModes) -}}
+      {{- end -}}
+    {{- end -}}
+  {{- else -}}
+    {{- $inputsModes := default (list) $inputs.accessModes -}}
+    {{- if not (has "ReadWriteMany" $inputsModes) -}}
+      {{- fail "Invalid values: replicaCount > 1 with persistence.inputs.enabled=true requires persistence.inputs.accessModes to include ReadWriteMany (RWX), or set replicaCount=1/disable this volume." -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
+{{- $envSecret := default (dict) .Values.envSecret -}}
+{{- if $envSecret.existingSecret -}}
+  {{- if not $envSecret.secretKey -}}
+    {{- fail "Invalid values: envSecret.secretKey cannot be empty when envSecret.existingSecret is set." -}}
+  {{- end -}}
+  {{- $existingSecret := lookup "v1" "Secret" .Release.Namespace $envSecret.existingSecret -}}
+  {{- if $existingSecret -}}
+    {{- $existingSecretData := default (dict) (index $existingSecret "data") -}}
+    {{- if not (hasKey $existingSecretData $envSecret.secretKey) -}}
+      {{- fail (printf "Invalid values: Secret %q in namespace %q does not contain key %q required by envSecret.secretKey." $envSecret.existingSecret .Release.Namespace $envSecret.secretKey) -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- end -}}

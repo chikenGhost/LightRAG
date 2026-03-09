@@ -1,0 +1,4 @@
+{{- /*
+Run value validation before rendering resources.
+*/ -}}
+{{- include "lightrag.validateValues" . -}}

@@ -129,6 +129,7 @@ persistence:
     existingClaim: ""
     storageClass: ""
     annotations: {}
+    # For replicaCount > 1, this must include ReadWriteMany when chart creates the PVC.
     accessModes:
       - ReadWriteOnce
     size: 10Gi
@@ -138,6 +139,7 @@ persistence:
     existingClaim: ""
     storageClass: ""
     annotations: {}
+    # For replicaCount > 1, this must include ReadWriteMany when chart creates the PVC.
     accessModes:
       - ReadWriteOnce
     size: 5Gi
@@ -145,6 +147,7 @@ persistence:
 
 envSecret:
   existingSecret: ""
+  # Key that stores dotenv content in the Secret. Required when existingSecret is set.
   secretKey: .env
   # Optional rollout token for external secret updates when lookup is unavailable.
   existingSecretVersion: ""
