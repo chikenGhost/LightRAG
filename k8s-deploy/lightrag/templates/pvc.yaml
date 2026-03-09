@@ -1,28 +1,60 @@
-{{- if .Values.persistence.enabled }}
----
+{{- if and .Values.persistence.enabled .Values.persistence.ragStorage.enabled (not .Values.persistence.ragStorage.existingClaim) }}
+{{- $ragStorageAnnotations := dict -}}
+{{- range $key, $val := (default (dict) .Values.commonAnnotations) -}}
+{{- $_ := set $ragStorageAnnotations $key $val -}}
+{{- end -}}
+{{- range $key, $val := (default (dict) .Values.persistence.ragStorage.annotations) -}}
+{{- $_ := set $ragStorageAnnotations $key $val -}}
+{{- end -}}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "lightrag.fullname" . }}-rag-storage
+  name: {{ include "lightrag.ragStorageClaimName" . }}
   labels:
     {{- include "lightrag.labels" . | nindent 4 }}
+  {{- if $ragStorageAnnotations }}
+  annotations:
+    {{- toYaml $ragStorageAnnotations | nindent 4 }}
+  {{- end }}
 spec:
   accessModes:
-    - ReadWriteOnce
+    {{- toYaml .Values.persistence.ragStorage.accessModes | nindent 4 }}
   resources:
     requests:
       storage: {{ .Values.persistence.ragStorage.size }}
+  {{- $ragStorageClass := include "lightrag.storageClass" (dict "persistence" .Values.persistence.ragStorage "global" .Values.global) }}
+  {{- if $ragStorageClass }}
+  {{- $ragStorageClass | nindent 2 }}
+  {{- end }}
+{{- end }}
+
+{{- if and .Values.persistence.enabled .Values.persistence.inputs.enabled (not .Values.persistence.inputs.existingClaim) }}
+{{- $inputsAnnotations := dict -}}
+{{- range $key, $val := (default (dict) .Values.commonAnnotations) -}}
+{{- $_ := set $inputsAnnotations $key $val -}}
+{{- end -}}
+{{- range $key, $val := (default (dict) .Values.persistence.inputs.annotations) -}}
+{{- $_ := set $inputsAnnotations $key $val -}}
+{{- end -}}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "lightrag.fullname" . }}-inputs
+  name: {{ include "lightrag.inputsClaimName" . }}
   labels:
     {{- include "lightrag.labels" . | nindent 4 }}
+  {{- if $inputsAnnotations }}
+  annotations:
+    {{- toYaml $inputsAnnotations | nindent 4 }}
+  {{- end }}
 spec:
   accessModes:
-    - ReadWriteOnce
+    {{- toYaml .Values.persistence.inputs.accessModes | nindent 4 }}
   resources:
     requests:
       storage: {{ .Values.persistence.inputs.size }}
+  {{- $inputsStorageClass := include "lightrag.storageClass" (dict "persistence" .Values.persistence.inputs "global" .Values.global) }}
+  {{- if $inputsStorageClass }}
+  {{- $inputsStorageClass | nindent 2 }}
+  {{- end }}
 {{- end }}

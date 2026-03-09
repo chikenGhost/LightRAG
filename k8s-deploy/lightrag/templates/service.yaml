@@ -1,15 +1,36 @@
+{{- $annotations := dict -}}
+{{- range $key, $val := (default (dict) .Values.commonAnnotations) -}}
+{{- $_ := set $annotations $key $val -}}
+{{- end -}}
+{{- range $key, $val := (default (dict) .Values.service.annotations) -}}
+{{- $_ := set $annotations $key $val -}}
+{{- end -}}
 apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "lightrag.fullname" . }}
   labels:
     {{- include "lightrag.labels" . | nindent 4 }}
+  {{- if $annotations }}
+  annotations:
+    {{- toYaml $annotations | nindent 4 }}
+  {{- end }}
 spec:
   type: {{ .Values.service.type }}
+  {{- with .Values.service.clusterIP }}
+  clusterIP: {{ . | quote }}
+  {{- end }}
+  {{- if and (eq .Values.service.type "LoadBalancer") .Values.service.externalTrafficPolicy }}
+  externalTrafficPolicy: {{ .Values.service.externalTrafficPolicy }}
+  {{- end }}
+  sessionAffinity: {{ .Values.service.sessionAffinity }}
   ports:
-    - port: {{ .Values.service.port }}
-      targetPort: {{ .Values.env.PORT }}
+    - name: http
+      port: {{ .Values.service.ports.http }}
+      targetPort: http
       protocol: TCP
-      name: http
+      {{- if and (eq .Values.service.type "NodePort") .Values.service.nodePorts.http }}
+      nodePort: {{ .Values.service.nodePorts.http }}
+      {{- end }}
   selector:
     {{- include "lightrag.selectorLabels" . | nindent 4 }}

@@ -4,78 +4,183 @@ metadata:
   name: {{ include "lightrag.fullname" . }}
   labels:
     {{- include "lightrag.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  strategy:
+    {{- toYaml .Values.updateStrategy | nindent 4 }}
   selector:
     matchLabels:
       {{- include "lightrag.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      annotations:
-        checksum/config: {{ include "lightrag.envContent" . | sha256sum }}
       labels:
         {{- include "lightrag.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/env-secret: {{ include "lightrag.envSecretChecksum" . }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
+      serviceAccountName: {{ include "lightrag.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.automountServiceAccountToken }}
+      {{- $imagePullSecrets := include "lightrag.imagePullSecrets" . }}
+      {{- if $imagePullSecrets }}
+      imagePullSecrets:
+        {{- $imagePullSecrets | nindent 8 }}
+      {{- end }}
+      {{- if .Values.podSecurityContext.enabled }}
+      securityContext:
+        {{- omit .Values.podSecurityContext "enabled" | toYaml | nindent 8 }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
+      {{- with .Values.schedulerName }}
+      schedulerName: {{ . | quote }}
+      {{- end }}
       containers:
-        - name: {{ .Chart.Name }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: IfNotPresent
+        - name: {{ include "lightrag.name" . }}
+          image: {{ include "lightrag.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.containerSecurityContext.enabled }}
+          securityContext:
+            {{- omit .Values.containerSecurityContext "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- with .Values.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           ports:
             - name: http
-              containerPort: {{ .Values.env.PORT }}
+              containerPort: {{ include "lightrag.httpPort" . }}
               protocol: TCP
+          {{- if .Values.customLivenessProbe }}
+          livenessProbe:
+            {{- toYaml .Values.customLivenessProbe | nindent 12 }}
+          {{- else if .Values.livenessProbe.enabled }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.livenessProbe.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+            successThreshold: {{ .Values.livenessProbe.successThreshold }}
+            failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.customReadinessProbe }}
+          readinessProbe:
+            {{- toYaml .Values.customReadinessProbe | nindent 12 }}
+          {{- else if .Values.readinessProbe.enabled }}
           readinessProbe:
             httpGet:
-              path: /health
+              path: {{ .Values.readinessProbe.path }}
               port: http
-            initialDelaySeconds: 10
-            periodSeconds: 5
-            timeoutSeconds: 2
-            successThreshold: 1
-            failureThreshold: 3
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
+            successThreshold: {{ .Values.readinessProbe.successThreshold }}
+            failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.customStartupProbe }}
+          startupProbe:
+            {{- toYaml .Values.customStartupProbe | nindent 12 }}
+          {{- else if .Values.startupProbe.enabled }}
+          startupProbe:
+            httpGet:
+              path: {{ .Values.startupProbe.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.startupProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.startupProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.startupProbe.timeoutSeconds }}
+            successThreshold: {{ .Values.startupProbe.successThreshold }}
+            failureThreshold: {{ .Values.startupProbe.failureThreshold }}
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          {{- $envFrom := default (dict) .Values.envFrom }}
+          {{- $envFromConfigMaps := concat (default (list) (index $envFrom "configMaps")) (default (list) (index $envFrom "configmaps")) }}
+          {{- $envFromSecrets := default (list) (index $envFrom "secrets") }}
+          {{- if or (gt (len $envFromConfigMaps) 0) (gt (len $envFromSecrets) 0) .Values.extraEnvVarsCM .Values.extraEnvVarsSecret }}
+          envFrom:
+            {{- range $item := $envFromConfigMaps }}
+            - configMapRef:
+                name: {{ include "lightrag.refName" $item | quote }}
+            {{- end }}
+            {{- range $item := $envFromSecrets }}
+            - secretRef:
+                name: {{ include "lightrag.refName" $item | quote }}
+            {{- end }}
+            {{- with .Values.extraEnvVarsCM }}
+            - configMapRef:
+                name: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.extraEnvVarsSecret }}
+            - secretRef:
+                name: {{ . | quote }}
+            {{- end }}
+          {{- end }}
+          {{- with .Values.extraEnvVars }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: rag-storage
-              mountPath: /app/data/rag_storage
+              mountPath: {{ .Values.persistence.ragStorage.mountPath | quote }}
             - name: inputs
-              mountPath: /app/data/inputs
+              mountPath: {{ .Values.persistence.inputs.mountPath | quote }}
             - name: env-file
               mountPath: /app/.env
-              subPath: .env
-          {{- $envFrom := default (dict) .Values.envFrom }}
-          {{- $envFromEntries := list }}
-          {{- range (default (list) (index $envFrom "secrets")) }}
-          {{- $envFromEntries = append $envFromEntries (dict "secretRef" (dict "name" .name)) }}
-          {{- end }}
-          {{- range (default (list) (index $envFrom "configmaps")) }}
-          {{- $envFromEntries = append $envFromEntries (dict "configMapRef" (dict "name" .name)) }}
-          {{- end }}
-          {{- if gt (len $envFromEntries) 0 }}
-          envFrom:
-{{- toYaml $envFromEntries | nindent 12 }}
-          {{- end }}
-      {{- with .Values.image.imagePullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+              subPath: {{ .Values.envSecret.secretKey | quote }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
       volumes:
         - name: env-file
           secret:
-            secretName: {{ include "lightrag.fullname" . }}-env
-        {{- if .Values.persistence.enabled }}
+            secretName: {{ include "lightrag.envSecretName" . }}
         - name: rag-storage
+          {{- if and .Values.persistence.enabled .Values.persistence.ragStorage.enabled }}
           persistentVolumeClaim:
-            claimName: {{ include "lightrag.fullname" . }}-rag-storage
+            claimName: {{ include "lightrag.ragStorageClaimName" . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
         - name: inputs
+          {{- if and .Values.persistence.enabled .Values.persistence.inputs.enabled }}
           persistentVolumeClaim:
-            claimName: {{ include "lightrag.fullname" . }}-inputs
-        {{- else }}
-        - name: rag-storage
+            claimName: {{ include "lightrag.inputsClaimName" . }}
+          {{- else }}
           emptyDir: {}
-        - name: inputs
-          emptyDir: {}
+          {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
         {{- end }}
-
-  strategy:
-    {{- toYaml .Values.updateStrategy | nindent 4 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
