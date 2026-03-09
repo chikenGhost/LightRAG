@@ -63,7 +63,7 @@ helm upgrade --install lightrag ./lightrag \
 
 ```bash
 # 1. Run this port-forward command in your terminal:
-kubectl --namespace rag port-forward svc/lightrag-dev 9621:9621
+kubectl --namespace rag port-forward svc/lightrag 9621:9621
 
 # 2. While the command is running, open your browser and navigate to:
 # http://localhost:9621

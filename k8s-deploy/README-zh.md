@@ -63,7 +63,7 @@ helm upgrade --install lightrag ./lightrag \
 
 ```bash
 # 1. 在终端中运行此端口转发命令：
-kubectl --namespace rag port-forward svc/lightrag-dev 9621:9621
+kubectl --namespace rag port-forward svc/lightrag 9621:9621
 
 # 2. 当命令运行时，打开浏览器并导航到：
 # http://localhost:9621
