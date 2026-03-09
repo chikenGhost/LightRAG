@@ -28,7 +28,7 @@ spec:
   {{- end }}
 {{- end }}
 
-{{- if and .Values.persistence.enabled .Values.persistence.inputs.enabled (not .Values.persistence.inputs.existingClaim) }}
+{{ if and .Values.persistence.enabled .Values.persistence.inputs.enabled (not .Values.persistence.inputs.existingClaim) }}
 {{- $inputsAnnotations := dict -}}
 {{- range $key, $val := (default (dict) .Values.commonAnnotations) -}}
 {{- $_ := set $inputsAnnotations $key $val -}}
